@@ -1,0 +1,90 @@
+diff --git a/common/source/rtos/rtosIrqAsm.s b/common/source/rtos/rtosIrqAsm.s
+index 1827564..2993367 100644
+--- a/common/source/rtos/rtosIrqAsm.s
++++ b/common/source/rtos/rtosIrqAsm.s
+@@ -86,6 +86,12 @@ handle_irq:
+ #endif
+     ldr r1, [r2, r1, lsl #2] //handler function is never NULL so no check needed
+     str r0, [r12, #-4] //ack
++#ifdef LIBTWL_ARM7
++    // PicoDrive diagnostics: which IRQ handler is running (for a stuck screen)
++    ldr r3,= gRtosIrqNowPtr
++    ldr r3, [r3]
++    str r0, [r3]
++#endif
+     
+ #ifdef LIBTWL_ARM7
+     adr lr, finish
+@@ -103,6 +109,12 @@ arm7_check_irq2:
+ #endif
+ 
+ finish:
++#ifdef LIBTWL_ARM7
++    ldr r0,= gRtosIrqNowPtr
++    ldr r0, [r0]
++    mov r1, #0
++    str r1, [r0]
++#endif
+     ldr r12,= (gRtosState + RTOS_STATE_IRQ_DEPTH_OFFSET)
+     ldmia r12, {r0, r1, r2} //irqDepth, threadReadyList, curThread
+     subs r0, r0, #1
+@@ -114,6 +126,13 @@ finish:
+ 
+ irq_thread_switch:
+     str r1, [r12, #8] // curThread = threadReadyList
++#ifdef LIBTWL_ARM7
++    ldr r3,= gRtosThreadNowPtr
++    ldr r3, [r3]
++    ldrb r0, [r1, #76]
++    orr r0, r0, #0x100
++    str r0, [r3]
++#endif
+     pop {r0,r3,r12,lr}
+     stmia r2!, {r0,r3,r12,lr} // r0,r1,r2,r3
+     pop {r12,lr}
+@@ -161,4 +180,19 @@ irq_thread_switch:
+     movs pc, lr
+ 
+ .pool
++#ifdef LIBTWL_ARM7
++.data
++.align 2
++.global gRtosIrqNowPtr
++gRtosIrqNowPtr:
++    .word sRtosIrqNowDummy
++.global gRtosThreadNowPtr
++gRtosThreadNowPtr:
++    .word sRtosIrqNowDummy
++.bss
++.align 2
++sRtosIrqNowDummy:
++    .space 4
++#endif
+ .end
++
+diff --git a/common/source/rtos/rtosThreadAsm.s b/common/source/rtos/rtosThreadAsm.s
+index c668479..52c9c05 100644
+--- a/common/source/rtos/rtosThreadAsm.s
++++ b/common/source/rtos/rtosThreadAsm.s
+@@ -10,6 +10,14 @@
+ //r1=new
+ .global rtos_switchThreads
+ rtos_switchThreads:
++#ifdef LIBTWL_ARM7
++    // PicoDrive diagnostics: priority of the thread being switched to
++    ldr r2,= gRtosThreadNowPtr
++    ldr r2, [r2]
++    ldrb r3, [r1, #76]
++    orr r3, r3, #0x100
++    str r3, [r2]
++#endif
+     add r0, r0, #16
+     stmia r0!, {r4-r12,sp}
+     mov r2, lr
+@@ -48,4 +56,5 @@ rtos_switchThreads:
+     nop
+     movs pc, lr
+ 
++.pool
+ .end
+\ No newline at end of file

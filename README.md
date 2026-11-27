@@ -1,5 +1,11 @@
 # PicoDrive v0.1
 
+> [!WARNING]
+> **Beta software: use at your own risk.** PicoDrive is early, experimental
+> homebrew. It writes to disk images and SD cards over USB, and bugs could
+> corrupt data or images. Keep backups of anything important, and don't use
+> it on the only copy of your data.
+
 A DSpico app for the Nintendo DSi (and DS) that turns the console into a USB
 drive. It mounts disk-image files from the DSpico's SD card, and you can
 control it from a phone over WiFi, even with the lid closed.
@@ -13,6 +19,7 @@ control it from a phone over WiFi, even with the lid closed.
   connections or `sd:/wifi.txt`, then serves a small PIN-protected page for
   mounting and unmounting.
 - Can return to the loader menu.
+- Only offers image sizes the SD card's filesystem and free space can hold.
 
 Images go in `sd:/images/`. Output: `picodrive.nds` (DSi-enhanced; WPA2 needs
 DSi mode).
@@ -54,6 +61,11 @@ with `patches/libtwl-Makefile.blocksds` into `libs/libtwl-blocks`.
 
 Host-side tests (Linux, gcc, address/UB sanitizers) cover the file layer,
 FATX/ISO/CUE parsing, the FIFO protocol, the HTTP helpers and the web server.
+
+## Contributors
+
+- [v-man92-commits](https://github.com/v-man92-commits): author and hardware testing
+- Claude (Anthropic): co-developer
 
 ## Credits
 

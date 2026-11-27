@@ -35,8 +35,11 @@
 #include "web/webApp.h"
 #include "web/webBridge.h"
 #include "shim/ndsFifoShim.h"
+#include "assertTrap.h"
 
 #include "version.h"
+#include "web/webServer.h"
+#include <dswifi9.h>
 #define IMAGE_DIR       "sd:/images"
 #define MAX_ENTRIES     128
 #define NAME_LEN        128
@@ -91,9 +94,10 @@ static const SizePreset sPresets[] =
     { "1 GB", 1024 },
     { "2 GB", 2048 },
     { "4095 MB (FAT32 maximum)", 4095 },
-    { "8 GB   (exFAT card only)", 8192 },
-    { "16 GB  (exFAT card only)", 16384 },
-    { "32 GB  (exFAT card only)", 32768 },
+    { "8 GB", 8192 },
+    { "16 GB", 16384 },
+    { "32 GB", 32768 },
+    { "64 GB", 65536 },
     { "Custom", 0 }
 };
 #else
@@ -148,7 +152,6 @@ static UiColor sMsgColor;
 
 static int sPresetIndex;
 static u32 sCustomMiB = 100;
-static u64 sFreeBytes;
 static char sNewName[NAME_EDIT_LEN + 1];
 static int sNameCursor;
 static bool sCreateQuick = true;
@@ -162,19 +165,46 @@ static bool sCreateQuick = true;
 // what each CPU has seen, so a photo of the screen says where it got stuck.
 static volatile u32 sLoopCount, sLoopSeen, sStuckFrames;
 static volatile bool sInWaitFrame;
+static volatile bool sArm7Dead;
+static volatile u32 sArm9Frames;
+static volatile u32 sArm7DeadFrames;
 static void drawStuckScreen();
+
+// Where the CPU was when VBlank arrived: the BIOS pushes r0-r3, r12, lr at
+// the top of the IRQ stack, and lr is the interrupted address + 4. When the
+// main loop is stuck, these samples show what code is running instead.
+extern "C" char __sp_irq[];
+static volatile u32 sPcSamples[4];
+static volatile u32 sPcSampleIndex;
 
 static void vblankIrq(u32 irqMask)
 {
     rtos_signalEvent(&sVblankEvent);
+    sArm9Frames++;
     ndsFifoShim_pump();
+    sPcSamples[sPcSampleIndex++ & 3] = ((vu32*)__sp_irq)[-1] - 4;
+    // The ARM7 can stop on its own while the ARM9 carries on (the website
+    // then just goes dead): watch its frame counter as well.
+    static u32 sArm7FrameSeen, sArm7StuckFrames;
+    static mount_status_t sPeek;
+    mountClient_peekStatus(&sPeek);
+    if (sPeek.frame != sArm7FrameSeen)
+    {
+        sArm7FrameSeen = sPeek.frame;
+        sArm7StuckFrames = 0;
+    }
+    else if (sArm7StuckFrames < 0x10000000)
+        sArm7StuckFrames++;
+    bool wifiOn = gWifiStep || wifiNet_state() != WifiNetState::Off;
     if (sLoopCount != sLoopSeen)
     {
         sLoopSeen = sLoopCount;
         sStuckFrames = 0;
+        // main loop still runs: it draws the stuck page itself (see main)
+        sArm7Dead = sArm7StuckFrames >= 120 && sArm7FrameSeen != 0;
+        sArm7DeadFrames = sArm7StuckFrames;
     }
-    else if (++sStuckFrames >= 120 && (sStuckFrames % 30) == 0 &&
-             (gWifiStep || wifiNet_state() != WifiNetState::Off))
+    else if (++sStuckFrames >= 120 && (sStuckFrames % 30) == 0 && wifiOn)
         drawStuckScreen();
 }
 
@@ -219,6 +249,33 @@ static u64 presetBytes(int index)
 static u32 maxImageMiB()
 {
     return (u32)(sd_maxImageBytes() / MiB);
+}
+
+// Largest image that can be made right now: the filesystem's per-file limit
+// (FAT12/16/32: 4 GiB - 1, so 4095 MiB; exFAT: far larger), and the free
+// space (keeping 1 MiB spare). sFreeBytes == 0 means "not known yet".
+static u64 sFreeBytes;
+static u32 maxCreateMiB()
+{
+    u32 limit = maxImageMiB();
+    if (sFreeBytes)
+    {
+        u64 freeMiB = sFreeBytes > MiB ? (sFreeBytes - MiB) / MiB : 0;
+        if (freeMiB < limit)
+            limit = (u32)freeMiB;
+    }
+    return limit;
+}
+
+// Why the limit is what it is, for the screens.
+static bool createLimitIsFilesystem()
+{
+    return maxCreateMiB() == maxImageMiB();
+}
+
+static bool presetAllowed(int index)
+{
+    return sPresets[index].mib == 0 || sPresets[index].mib <= maxCreateMiB();
 }
 
 static int compareEntries(const void* a, const void* b)
@@ -370,6 +427,8 @@ static void cueLayoutInfo(Entry& e)
     }
 }
 
+static u64 queryFreeBytes();
+
 static void scanImages(const char* selectName = nullptr)
 {
     char keep[NAME_LEN] = "";
@@ -420,6 +479,8 @@ static void scanImages(const char* selectName = nullptr)
         sCursor = idx;
     clampCursor();
     sRestFrames = 0;
+    // keep the "largest image you can make" figure current (web page too)
+    sFreeBytes = queryFreeBytes();
 }
 
 static bool isMountedEntry(int idx)
@@ -1018,7 +1079,7 @@ static void drawStuckScreen()
     mountClient_peekStatus(&s);
     static const char* const kStates[] = { "not started", "waiting", "dispatching", "in Wifi_Update" };
     ui_clear(UI_TOP);
-    ui_line(UI_TOP, 0, UI_RED, " WiFi seems stuck (%lus)", (unsigned long)(sStuckFrames / 60));
+    ui_line(UI_TOP, 0, UI_RED, " Something is stuck (%lus)", (unsigned long)(sStuckFrames / 60));
     ui_line(UI_TOP, 1, UI_GREY, "--------------------------------");
     ui_line(UI_TOP, 3, UI_YELLOW, " Step:");
     static const char* const kNet[] = { "Off", "Starting", "Scanning", "Connecting", "Connected", "Failed" };
@@ -1047,10 +1108,19 @@ static void drawStuckScreen()
         (unsigned long)s.frame, arm7Alive ? "running" : "STOPPED");
     ui_line(UI_TOP, 14, wifiAlive ? UI_WHITE : UI_RED, "  ARM7 WiFi: %s",
         wifiAlive ? "running" : "not updating");
-    ui_line(UI_TOP, 15, UI_WHITE, "  ARM7 main: %s  IRQ %lx/%lx",
-        s.arm7Step == 1 ? "vblank wait" : s.arm7Step == 2 ? "working" : "?",
-        (unsigned long)s.arm7IrqIn, (unsigned long)s.arm7Irq2In);
-    ui_line(UI_TOP, 17, UI_GREY, " Please send a photo of this.");
+    ui_line(UI_TOP, 15, UI_WHITE, " A7 main %s stk %lu thr %lx",
+        s.arm7Step == 1 ? "wait" : s.arm7Step == 2 ? "work" : "?",
+        (unsigned long)s.wifiStackFree, (unsigned long)s.arm7Thread);
+    ui_line(UI_TOP, 16, (s.arm7IrqIn | s.arm7Irq2In | s.arm7IrqNow) ? UI_RED : UI_WHITE,
+        " A7 irq %lx/%lx any %lx",
+        (unsigned long)s.arm7IrqIn, (unsigned long)s.arm7Irq2In, (unsigned long)s.arm7IrqNow);
+    ui_line(UI_TOP, 23, UI_WHITE, " IE %08lx/%lx IME %lu",
+        (unsigned long)s.arm7IE, (unsigned long)s.arm7IE2, (unsigned long)s.arm7IME);
+    ui_line(UI_TOP, 17, UI_YELLOW, "  PC %08lx %08lx",
+        (unsigned long)sPcSamples[0], (unsigned long)sPcSamples[1]);
+    ui_line(UI_TOP, 18, UI_YELLOW, "     %08lx %08lx",
+        (unsigned long)sPcSamples[2], (unsigned long)sPcSamples[3]);
+
     ui_flushDirect();
 }
 
@@ -1318,15 +1388,23 @@ static void drawCreateSize()
         bool sel = i == sPresetIndex;
         if (sPresets[i].mib == 0)
             ui_line(UI_BOTTOM, 2 + i, sel ? UI_YELLOW : UI_WHITE, "%c Custom: %lu MB", sel ? '>' : ' ', sCustomMiB);
+        else if (!presetAllowed(i))
+            ui_line(UI_BOTTOM, 2 + i, UI_GREY, "  %-22s n/a", sPresets[i].label);
         else
             ui_line(UI_BOTTOM, 2 + i, sel ? UI_YELLOW : UI_WHITE, "%c %s", sel ? '>' : ' ', sPresets[i].label);
     }
     if (sPresets[sPresetIndex].mib == 0)
-        ui_line(UI_BOTTOM, 13, UI_GREY, " Left/Right: 1 MB  L/R: 64 MB");
-    char free[12];
+        ui_line(UI_BOTTOM, 14, UI_GREY, " Left/Right: 1 MB  L/R: 64 MB");
+    char free[12], largest[12];
     ui_formatSize(free, sFreeBytes);
-    ui_line(UI_BOTTOM, 14, UI_WHITE, " Free on SD card: %s", free);
-    drawCreateMode(16);
+    ui_formatSize(largest, (u64)maxCreateMiB() * MiB);
+    const char* fs = sd_fsTypeName();
+    ui_line(UI_BOTTOM, 15, UI_WHITE, " Free: %s  Largest: %s", free, largest);
+    if (createLimitIsFilesystem())
+        ui_line(UI_BOTTOM, 16, UI_GREY, " (%s file size limit)", fs ? fs : "SD card");
+    else
+        ui_line(UI_BOTTOM, 16, UI_GREY, " (limited by free space)");
+    drawCreateMode(17);
     ui_line(UI_BOTTOM, 20, UI_GREY, "--------------------------------");
     ui_line(UI_BOTTOM, 21, UI_WHITE, " A: next  B: cancel  Y: mode");
 }
@@ -1706,6 +1784,17 @@ static void updateBrowse(const Buttons& b)
         }
         showBusy("Please wait...", "Checking free space");
         sFreeBytes = queryFreeBytes();
+        if (maxCreateMiB() < 1)
+        {
+            showMessage(UI_RED, "The SD card is full.");
+            return;
+        }
+        if (!presetAllowed(sPresetIndex))
+            sPresetIndex = 0;
+        while (!presetAllowed(sPresetIndex))
+            sPresetIndex++;     // Custom (last) is always allowed
+        if (sCustomMiB > maxCreateMiB())
+            sCustomMiB = maxCreateMiB();
         defaultNewName();
         sMode = Mode::CreateSize;
         return;
@@ -1727,10 +1816,15 @@ static void updateBrowse(const Buttons& b)
 
 static void updateCreateSize(const Buttons& b)
 {
+    // only sizes this card can hold are selectable (Custom always is)
     if (b.repeat & BTN_UP)
-        sPresetIndex = (sPresetIndex + PRESET_COUNT - 1) % PRESET_COUNT;
+        do
+            sPresetIndex = (sPresetIndex + PRESET_COUNT - 1) % PRESET_COUNT;
+        while (!presetAllowed(sPresetIndex));
     if (b.repeat & BTN_DOWN)
-        sPresetIndex = (sPresetIndex + 1) % PRESET_COUNT;
+        do
+            sPresetIndex = (sPresetIndex + 1) % PRESET_COUNT;
+        while (!presetAllowed(sPresetIndex));
     if (sPresets[sPresetIndex].mib == 0)
     {
         s32 delta = 0;
@@ -1740,7 +1834,8 @@ static void updateCreateSize(const Buttons& b)
         if (b.repeat & BTN_R) delta += 64;
         s32 v = (s32)sCustomMiB + delta;
         if (v < 1) v = 1;
-        if (v > (s32)maxImageMiB()) v = (s32)maxImageMiB();
+        if (v > (s32)maxCreateMiB()) v = (s32)maxCreateMiB();
+        if (v < 1) v = 1;
         sCustomMiB = (u32)v;
     }
     if (b.pressed & BTN_Y)
@@ -1853,7 +1948,9 @@ static void updateWifi()
         gWifiStep = "wifiNet_poll";
     wifiNet_poll();
     gWifiStep = nullptr;
-    u32 now = mountClient_status().frame;
+    // the ARM9's own frame count: web timeouts and the PIN lockout must not
+    // depend on the ARM7 (if it ever stalls, a lockout would never end)
+    u32 now = sArm9Frames;
     bool connected = wifiNet_state() == WifiNetState::Connected;
     if (connected && !webApp_running())
     {
@@ -1908,7 +2005,8 @@ void webBridge_status(WebStatus& out)
     out.readKBs = sReadRateKBs;
     const char* fs = sd_fsTypeName();
     out.fsType = fs ? fs : "";
-    out.maxImageMiB = maxImageMiB();
+    out.maxImageMiB = maxCreateMiB();
+    out.fsLimitMiB = maxImageMiB();
 }
 
 // Runs an action and reports how it went: a red message on the DS means
@@ -2224,7 +2322,17 @@ int main(int argc, char* argv[])
         Buttons b = ui_readButtons(mountClient_status().keyXY);
         update(b);
         updateWifi();
-        draw();
+        if (sArm7Dead)
+        {
+            if ((sArm7DeadFrames % 30) == 0)
+            {
+                sStuckFrames = sArm7DeadFrames;
+                drawStuckScreen();
+                sStuckFrames = 0;
+            }
+        }
+        else
+            draw();
     }
 
     return 0;

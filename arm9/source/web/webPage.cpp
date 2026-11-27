@@ -49,7 +49,7 @@ input,select{font:inherit;padding:8px;border-radius:8px;border:1px solid #3a424a
         <option value="8">8 MB (Xbox memory unit)</option><option value="32">32 MB</option>
         <option value="128">128 MB</option><option value="512">512 MB</option><option value="1024">1 GB</option>
         <option value="2048">2 GB</option><option value="4095">4095 MB</option><option value="8192">8 GB</option>
-        <option value="16384">16 GB</option><option value="32768">32 GB</option>
+        <option value="16384">16 GB</option><option value="32768">32 GB</option><option value="65536">64 GB</option>
       </select>
       <button onclick="createImg()">Create</button>
     </div>
@@ -85,8 +85,10 @@ function renderStatus(s){st=s;let h='';
   if(s.hostEjected)h+='<button onclick="act(\'/api/reinsert\')">Reinsert</button>';
   h+='<span class="dim">'+(s.safe?'Safe to unmount':(s.busy?'PC is using it: eject there first':'Idle'))+'</span></div>';}
  else h+='<div class="row" style="margin-top:10px"><button onclick="act(\'/api/sharesd\',\'Share the whole SD card with the PC? The DS cannot browse until it is unmounted.\')">Share whole SD card</button></div>';
- h+='<div class="dim" style="margin-top:8px">SD: '+esc(s.fs||'?')+' &middot; max image '+s.maxMiB+' MB</div>';
- $('status').innerHTML=h;}
+ h+='<div class="dim" style="margin-top:8px">SD: '+esc(s.fs||'?')+' &middot; largest new image '+s.maxMiB+' MB'+(s.maxMiB<s.fsMaxMiB?' (free space)':' ('+esc(s.fs||'file')+' limit)')+'</div>';
+ $('status').innerHTML=h;
+ for(const o of $('newsize').options){o.disabled=+o.value>s.maxMiB;}
+ const sel=$('newsize');if(sel.selectedOptions[0]&&sel.selectedOptions[0].disabled){for(let i=sel.options.length-1;i>=0;i--)if(!sel.options[i].disabled){sel.selectedIndex=i;break;}}}
 function renderImages(list){let h='';const locked=st&&(st.mounted||st.sdShared);
  if(!list.length)h='<div class="dim">No images yet.</div>';
  for(const e of list){h+='<div class="img"><div class="row"><div class="grow"><div class="name">'+esc(e.name)+(e.mounted?' <span class="ok">(mounted)</span>':'')+'</div><div class="dim">'+size(e.size)+(e.kind?' &middot; '+esc(e.kind):'')+'</div></div></div><div class="row" style="margin-top:6px">';

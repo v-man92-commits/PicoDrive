@@ -123,7 +123,7 @@ CXXFLAGS	+= -std=gnu++23 $(WARNFLAGS) $(DEFINES) $(INCLUDEFLAGS) \
            -Wno-volatile -Wsuggest-override -Werror=suggest-override \
 		   -specs=$(SPECS)
 
-LDFLAGS		:= $(ARCH) $(LIBDIRSFLAGS) -Wl,-Map,$(MAP),--gc-sections,--use-blx $(DEFINES) \
+LDFLAGS		:= $(ARCH) $(LIBDIRSFLAGS) -Wl,-Map,$(MAP),--gc-sections,--use-blx,--wrap=__assert_func $(DEFINES) \
 		   -Wl,--start-group $(LIBS) -Wl,--end-group -specs=$(SPECS)
 
 # Intermediate build files

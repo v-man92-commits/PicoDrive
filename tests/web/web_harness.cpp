@@ -30,7 +30,7 @@ void webBridge_status(WebStatus& s)
     s.mounted = !gMounted.empty() || gSd; s.sdShared = gSd; s.readOnly = gRo; s.cd = gCd;
     s.hostEjected = false; s.safeToUnmount = !gBusy; s.busy = gBusy;
     s.mountedName = gSd ? "Whole SD card" : gMounted.c_str(); s.usbState = s.mounted ? "Host connected" : "";
-    s.readKBs = gBusy ? 900 : 0; s.fsType = "exFAT"; s.maxImageMiB = 2097151;
+    s.readKBs = gBusy ? 900 : 0; s.fsType = "exFAT"; s.maxImageMiB = 2097151; s.fsLimitMiB = 2097151;
 }
 static int find(const char* n) { for (size_t i = 0; i < gImgs.size(); i++) if (gImgs[i].name == n) return (int)i; return -1; }
 bool webBridge_mount(const char* name, WebMountMode m, char* msg, size_t sz)

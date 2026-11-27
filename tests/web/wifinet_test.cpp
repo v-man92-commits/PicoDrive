@@ -33,8 +33,9 @@ bool Wifi_InitDefault(unsigned) { gInits++; return true; }
 bool Wifi_Deinit(void) { return true; }
 void Wifi_DisableWifi(void) {}
 void Wifi_EnableWifi(void) {}
-void Wifi_ScanMode(void) {}
-int Wifi_GetNumAP(void) { return (int)gAps.size(); }
+static int gScanCalls, gScansBeforeResults; // radio returns nothing until the Nth scan request
+void Wifi_ScanMode(void) { gScanCalls++; }
+int Wifi_GetNumAP(void) { return gScanCalls < gScansBeforeResults ? 0 : (int)gAps.size(); }
 int Wifi_GetAPData(int i, Wifi_AccessPoint* a) { *a = gAps[i]; return 0; }
 int Wifi_ConnectSecureAP(Wifi_AccessPoint* a, const void* k, size_t l) { gLastSsid = a->ssid; gLastKey = k ? std::string((const char*)k, l) : ""; gLastMethod = "secure"; gFramesInAttempt = 0; gAttempts++; return 0; }
 int Wifi_ConnectWfcAP(Wifi_AccessPoint* a) { gLastSsid = a->ssid; gLastMethod = "wfc"; gFramesInAttempt = 0; gAttempts++; return 0; }
@@ -103,10 +104,29 @@ int main()
     CHECK(wifiNet_state() == WifiNetState::Scanning || wifiNet_state() == WifiNetState::Connecting, "retries by itself");
     wifiNet_stop();
 
+    // 4b. like the real DSi radio: the first scan request after WiFi starts
+    //     returns nothing; the scan is re-issued and the network joined
+    {
+        gBehaviour = [](const std::string& s, const std::string& m, int f) {
+            if (s != "HOME" || m != "secure") return (int)ASSOCSTATUS_CANNOTCONNECT;
+            return f < 30 ? (int)ASSOCSTATUS_ASSOCIATING : (int)ASSOCSTATUS_ASSOCIATED; };
+        gScanCalls = 0;
+        gScansBeforeResults = 2;
+        wifiNet_start();
+        int m = run(60 * 20);
+        CHECK(wifiNet_state() == WifiNetState::Connected && gLastSsid == "HOME", "joined after a re-issued scan (%d frames, %d scans)", m, gScanCalls);
+        CHECK(m < 60 * 10, "within 10 s (%d frames)", m);
+        gScansBeforeResults = 0;
+        wifiNet_stop();
+    }
+
     // 5. no saved network in range
     gAps = { ap("NEIGHBOUR", -50, WFLAG_APDATA_WPA | WFLAG_APDATA_COMPATIBLE) };
     wifiNet_start();
+    // the scan keeps going (up to 20 s) while nothing usable has been seen
     for (int i = 0; i < 60 * 6; i++) wifiNet_poll();
+    CHECK(wifiNet_state() == WifiNetState::Scanning, "still scanning after 6 s");
+    for (int i = 0; i < 60 * 15; i++) wifiNet_poll();
     CHECK(wifiNet_state() == WifiNetState::Failed && strstr(wifiNet_lastError(), "No saved network"), "no saved network: %s", wifiNet_lastError());
     wifiNet_shutdown();
     CHECK(gInits == 1, "DSWiFi initialised once (%d)", gInits);

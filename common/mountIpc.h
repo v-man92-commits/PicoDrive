@@ -101,4 +101,8 @@ typedef struct alignas(32)
     vu32 arm7IrqIn;          // libnds-style (DSWiFi) IRQ handlers running now
     vu32 arm7Irq2In;         // same, DSi IRQ2 sources
     vu32 arm7Step;           // ARM7 main thread: 1 waiting for VBlank, 2 working
+    vu32 arm7IrqNow;         // IRQ bit whose (libtwl-dispatched) handler is running, 0 = none
+    vu32 wifiStackFree;      // bytes of the ARM7 WiFi thread stack never used
+    vu32 arm7Thread;         // 0x100 | priority of the ARM7 thread last switched to
+    vu32 arm7IE, arm7IE2, arm7IME; // ARM7 interrupt enables, as last seen by its main loop
 } mount_status_t;

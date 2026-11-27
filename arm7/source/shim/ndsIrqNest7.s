@@ -1,12 +1,9 @@
-@ Runs a libnds-style (DSWiFi) interrupt handler with interrupts enabled,
-@ like libnds's own dispatcher does.
+@ Runs a libnds-style (DSWiFi) interrupt handler the way libnds's ARM7
+@ dispatcher does: in system mode, on a roomy stack, with interrupts off.
 @
-@ libtwl calls handlers in IRQ mode with interrupts off and never nests.
-@ DSWiFi expects libnds behaviour: its handlers can wait for something that
-@ another interrupt delivers (e.g. an SDIO transfer finishing). Under libtwl
-@ that wait never ends and the ARM7 locks up. So: mask this handler's own
-@ bit, switch to system mode on a private stack, enable interrupts, call it,
-@ then undo all of that.
+@ libtwl calls handlers in IRQ mode, on the 1 KB IRQ stack. DSWiFi's DSi
+@ handlers need far more than that (running them there crashed the ARM7
+@ while joining), so they get a private 4 KB stack in system mode.
 @
 @ void ndsIrqShim7_callNested(VoidFn f, u32 bit, vu32* regIE)
 
@@ -32,10 +29,12 @@ ndsIrqShim7_callNested:
     cmp     r3, #1
     ldreq   sp, =sNestStackTop      @ outermost: private stack
     push    {r12, lr}               @ thread sp and its lr (8 bytes)
-    msr     cpsr_c, #0x1F           @ IRQs on
+    @ IRQs stay OFF while the handler runs, exactly like libnds's ARM7
+    @ dispatcher (it clears IME around handlers). Letting DSWiFi's timer and
+    @ SDIO handlers interrupt each other mixed up SDIO transfers and stalled
+    @ the ARM7 for seconds at a time.
     mov     lr, pc
     bx      r0
-    msr     cpsr_c, #0x9F           @ IRQs off
     pop     {r12, lr}
     mov     sp, r12
     ldr     r2, =sNestDepth
@@ -56,7 +55,9 @@ ndsIrqShim7_callNested:
     .align 3
 sNestDepth:
     .space 4
+    @ in main RAM (IWRAM is kept for USB): 4 KB for DSWiFi handlers
+    .section .ewram_bss, "aw", %nobits
     .align 3
 sNestStack:
-    .space 2048
+    .space 4096
 sNestStackTop:

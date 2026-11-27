@@ -21,7 +21,7 @@ volatile const char* gWifiStep;
 
 namespace
 {
-    constexpr int SCAN_FRAMES = 4 * 60;
+    constexpr int SCAN_FRAMES = 20 * 60;   // longest scan before giving up
     constexpr int JOIN_FRAMES = 20 * 60;
     constexpr int DHCP_FRAMES = 45 * 60;
     constexpr int RETRY_FRAMES = 15 * 60;
@@ -302,11 +302,25 @@ void wifiNet_poll()
             break;
 
         case WifiNetState::Scanning:
-            if (--sTimer > 0)
+        {
+            // From 3 s in, look for a usable network once a second. Every
+            // 5 s without one, re-issue the scan command: right after the
+            // WiFi starts, the first scan request can come back empty (the
+            // old code only ever worked on its second scan). Give up after
+            // SCAN_FRAMES.
+            --sTimer;
+            int elapsed = SCAN_FRAMES - sTimer;
+            if (sTimer > 0 && (elapsed < 3 * 60 || (elapsed % 60) != 0))
                 break;
             planAttempts();
             if (sAttemptCount == 0)
             {
+                if (sTimer > 0)
+                {
+                    if ((elapsed % (5 * 60)) == 0)
+                        Wifi_ScanMode();
+                    break;
+                }
                 if (sHaveConfig && sConfig.has_ssid)
                     fail("Network in wifi.txt not seen");
                 else
@@ -316,6 +330,7 @@ void wifiNet_poll()
             if (!startAttempt())
                 fail("Couldn't start joining");
             break;
+        }
 
         case WifiNetState::Connecting:
         {

@@ -26,7 +26,11 @@ tinyusb:
 	$(V)if git -C libs/tinyusb apply --check $(CURDIR)/patches/tinyusb-msc-cdrom.patch 2>/dev/null; then \
 		echo "  PATCH tinyusb"; git -C libs/tinyusb apply $(CURDIR)/patches/tinyusb-msc-cdrom.patch; fi
 
+# libtwl gets a small diagnostics patch (which ARM7 IRQ/thread is running,
+# shown on PicoDrive's "Something is stuck" page); applied once.
 libtwl:
+	$(V)if git -C libs/libtwl apply --check $(CURDIR)/patches/libtwl-irq-breadcrumb.patch 2>/dev/null; then \
+		echo "  PATCH libtwl"; git -C libs/libtwl apply $(CURDIR)/patches/libtwl-irq-breadcrumb.patch; fi
 	$(V)$(MAKE) -C libs/libtwl -f $(CURDIR)/patches/libtwl-Makefile.blocksds --no-print-directory
 
 arm9: libtwl tinyusb

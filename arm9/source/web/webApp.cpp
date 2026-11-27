@@ -151,7 +151,7 @@ namespace
         outJsonString(s.usbState);
         outf(",\"readKBs\":%lu,\"fs\":", (unsigned long)s.readKBs);
         outJsonString(s.fsType);
-        outf(",\"maxMiB\":%lu,\"last\":", (unsigned long)s.maxImageMiB);
+        outf(",\"maxMiB\":%lu,\"fsMaxMiB\":%lu,\"last\":", (unsigned long)s.maxImageMiB, (unsigned long)s.fsLimitMiB);
         outJsonString(sLastAction);
         outf("}");
         sendJson(out);
@@ -269,9 +269,15 @@ namespace
 bool webApp_start(u32 now)
 {
     sNow = now;
-    snprintf(sPin, sizeof(sPin), "%04lu", (unsigned long)(randomWord() % 10000));
-    sSession[0] = 0; // new PIN: old sessions end
+    // One PIN (and session) per run of the app: WiFi dropping and rejoining
+    // restarts the server, but must not change the PIN under the user.
+    if (!sPin[0])
+    {
+        snprintf(sPin, sizeof(sPin), "%04lu", (unsigned long)(randomWord() % 10000));
+        sSession[0] = 0;
+    }
     sBadPins = 0;
+    sLockedUntil = now;
     sLastAction[0] = 0;
     return webServer_start(WEBAPP_PORT, handle);
 }

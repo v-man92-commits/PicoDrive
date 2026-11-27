@@ -27,7 +27,8 @@ struct WebStatus
     const char* usbState;
     u32 readKBs;
     const char* fsType;
-    u32 maxImageMiB;
+    u32 maxImageMiB;    // largest image that can be created now (file limit and free space)
+    u32 fsLimitMiB;     // the filesystem's own per-file limit
 };
 
 enum class WebMountMode

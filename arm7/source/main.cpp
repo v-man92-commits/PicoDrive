@@ -218,7 +218,12 @@ int main()
             st->arm7Step = 1;
         rtos_waitEvent(&sVBlankEvent, true, true);
         if (st)
+        {
             st->arm7Step = 2;
+            st->arm7IE = *(vu32*)0x04000210;
+            st->arm7IE2 = *(vu32*)0x04000218;
+            st->arm7IME = *(vu32*)0x04000208;
+        }
         updateArm7();
     }
 
