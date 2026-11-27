@@ -1,0 +1,6 @@
+build/
+*.nds
+libs/libtwl-blocks/
+tests/**/*_test
+tests/web/web_harness
+*.o

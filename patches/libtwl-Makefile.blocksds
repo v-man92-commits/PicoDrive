@@ -1,0 +1,38 @@
+# Builds libtwl7/libtwl9 with the BlocksDS (Wonderful) toolchain.
+# Output goes to $(OUT)/libtwl7/lib and $(OUT)/libtwl9/lib so the devkitPro
+# build outputs (libtwl7/lib, libtwl9/lib) are left alone.
+export BLOCKSDS            ?= /opt/wonderful/thirdparty/blocksds/core
+export WONDERFUL_TOOLCHAIN ?= /opt/wonderful
+PREFIX := $(WONDERFUL_TOOLCHAIN)/toolchain/gcc-arm-none-eabi/bin/arm-none-eabi-
+OUT    ?= $(CURDIR)/../libtwl-blocks
+
+SRC7 := libtwl7/source libtwl7/source/i2c libtwl7/source/sio libtwl7/source/spi libtwl7/source/sys \
+        common/source/card common/source/ipc common/source/mem common/source/rtos
+SRC9 := libtwl9/source libtwl9/source/dma libtwl9/source/gx libtwl9/source/ipc libtwl9/source/math libtwl9/source/mem libtwl9/source/rtos libtwl9/source/gfx libtwl9/source/sys \
+        common/source/card common/source/ipc common/source/mem common/source/rtos
+
+COMMONFLAGS := -O2 -Wall -ffunction-sections -fdata-sections -fomit-frame-pointer -ffast-math \
+               -Werror=implicit-function-declaration -Werror=return-type -D__NDS__ -D__BLOCKSDS__ \
+               -I$(BLOCKSDS)/libs/libnds/include -Icommon/include
+FLAGS7 := -marm -mthumb-interwork -mcpu=arm7tdmi -DLIBTWL_ARM7 -DARM7 -Ilibtwl7/include $(COMMONFLAGS)
+FLAGS9 := -marm -mthumb-interwork -mcpu=arm946e-s+nofp -DLIBTWL_ARM9 -DARM9 -Ilibtwl9/include $(COMMONFLAGS)
+
+find_src = $(foreach d,$(1),$(wildcard $(d)/*.c) $(wildcard $(d)/*.cpp) $(wildcard $(d)/*.s))
+OBJ7 := $(patsubst %,$(OUT)/obj7/%.o,$(call find_src,$(SRC7)))
+OBJ9 := $(patsubst %,$(OUT)/obj9/%.o,$(call find_src,$(SRC9)))
+
+all: $(OUT)/libtwl7/lib/libtwl7.a $(OUT)/libtwl9/lib/libtwl9.a
+
+$(OUT)/libtwl7/lib/libtwl7.a: $(OBJ7)
+	@mkdir -p $(@D); rm -f $@; $(PREFIX)ar rcs $@ $^
+$(OUT)/libtwl9/lib/libtwl9.a: $(OBJ9)
+	@mkdir -p $(@D); rm -f $@; $(PREFIX)ar rcs $@ $^
+
+$(OUT)/obj7/%.c.o: %.c ; @mkdir -p $(@D); $(PREFIX)gcc $(FLAGS7) -std=gnu17 -c $< -o $@
+$(OUT)/obj7/%.cpp.o: %.cpp ; @mkdir -p $(@D); $(PREFIX)g++ $(FLAGS7) -std=gnu++23 -fno-rtti -fno-exceptions -fno-threadsafe-statics -c $< -o $@
+$(OUT)/obj7/%.s.o: %.s ; @mkdir -p $(@D); $(PREFIX)gcc $(FLAGS7) -x assembler-with-cpp -c $< -o $@
+$(OUT)/obj9/%.c.o: %.c ; @mkdir -p $(@D); $(PREFIX)gcc $(FLAGS9) -std=gnu17 -c $< -o $@
+$(OUT)/obj9/%.cpp.o: %.cpp ; @mkdir -p $(@D); $(PREFIX)g++ $(FLAGS9) -std=gnu++23 -fno-rtti -fno-exceptions -fno-threadsafe-statics -c $< -o $@
+$(OUT)/obj9/%.s.o: %.s ; @mkdir -p $(@D); $(PREFIX)gcc $(FLAGS9) -x assembler-with-cpp -c $< -o $@
+
+clean: ; rm -rf $(OUT)

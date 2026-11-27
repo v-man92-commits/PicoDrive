@@ -1,0 +1,123 @@
+diff --git a/src/class/msc/msc_device.c b/src/class/msc/msc_device.c
+index dd66bfb6f..edaa13372 100644
+--- a/src/class/msc/msc_device.c
++++ b/src/class/msc/msc_device.c
+@@ -147,6 +147,27 @@ static inline uint16_t rdwr10_get_blocksize(msc_cbw_t const* cbw) {
+   return (uint16_t) (cbw->total_bytes / block_count);
+ }
+ 
++// DSpico image mounter addition: other block reads streamed like READ(10)
++static inline uint32_t stream_read_blocks(msc_cbw_t const* cbw) {
++  if (!tud_msc_stream_read_blocks_cb || SCSI_CMD_READ_10 == cbw->command[0] ||
++      !is_data_in(cbw->dir) || cbw->total_bytes == 0) {
++    return 0;
++  }
++  return tud_msc_stream_read_blocks_cb(cbw->lun, cbw->command, cbw->total_bytes);
++}
++
++static inline bool is_read_cmd(msc_cbw_t const* cbw) {
++  return SCSI_CMD_READ_10 == cbw->command[0] || stream_read_blocks(cbw) != 0;
++}
++
++static inline uint32_t read_blocksize(msc_cbw_t const* cbw) {
++  if (SCSI_CMD_READ_10 == cbw->command[0]) {
++    return rdwr10_get_blocksize(cbw);
++  }
++  uint32_t const blocks = stream_read_blocks(cbw);
++  return blocks ? cbw->total_bytes / blocks : 0;
++}
++
+ static uint8_t rdwr10_validate_cmd(msc_cbw_t const* cbw) {
+   uint8_t status = MSC_CSW_STATUS_PASSED;
+   uint16_t const block_count = rdwr10_get_blockcount(cbw);
+@@ -393,6 +414,9 @@ bool mscd_xfer_cb(uint8_t rhport, uint8_t ep_addr, xfer_result_t event, uint32_t
+           // no data transfer, only exist in complaint test suite
+           p_msc->stage = MSC_STAGE_STATUS;
+         }
++      } else if (read_blocksize(p_cbw) != 0) {
++        // DSpico image mounter addition: READ(12) / READ CD etc. of any length
++        proc_read10_cmd(rhport, p_msc);
+       } else {
+         // For other SCSI commands
+         // 1. OUT : queue transfer (invoke app callback after done)
+@@ -447,7 +471,7 @@ bool mscd_xfer_cb(uint8_t rhport, uint8_t ep_addr, xfer_result_t event, uint32_t
+       TU_LOG_DRV("  SCSI Data [Lun%u]\r\n", p_cbw->lun);
+       //TU_LOG_MEM(MSC_DEBUG, _mscd_epbuf.buf, xferred_bytes, 2);
+ 
+-      if (SCSI_CMD_READ_10 == p_cbw->command[0]) {
++      if (is_read_cmd(p_cbw)) {
+         p_msc->xferred_len += xferred_bytes;
+ 
+         if ( p_msc->xferred_len >= p_msc->total_len ) {
+@@ -698,6 +722,17 @@ static int32_t proc_builtin_scsi(uint8_t lun, uint8_t const scsi_cmd[16], uint8_
+     break;
+ 
+     case SCSI_CMD_MODE_SENSE_6: {
++      // DSpico image mounter addition: refuse the disk geometry pages
++      // (format device 03h, rigid disk 04h, flexible disk 05h) like USB flash
++      // drives do. Answering them with the bare header below made BIOSes
++      // (e.g. SeaBIOS) read whatever followed it as cylinders/heads.
++      uint8_t const page = scsi_cmd[2] & 0x3F;
++      if (page == 0x03 || page == 0x04 || page == 0x05) {
++        tud_msc_set_sense(lun, SCSI_SENSE_ILLEGAL_REQUEST, 0x24, 0x00); // invalid field in CDB
++        resplen = -1;
++        break;
++      }
++
+       scsi_mode_sense6_resp_t mode_resp =
+       {
+         .data_len = 3,
+@@ -755,7 +790,7 @@ static void proc_read10_cmd(uint8_t rhport, mscd_interface_t* p_msc) {
+   msc_cbw_t const* p_cbw = &p_msc->cbw;
+ 
+   // block size already verified not zero
+-  uint16_t const block_sz = rdwr10_get_blocksize(p_cbw);
++  uint32_t const block_sz = read_blocksize(p_cbw);
+ 
+   // Adjust lba with transferred bytes
+   uint32_t const lba = rdwr10_get_lba(p_cbw->command) + (p_msc->xferred_len / block_sz);
+@@ -765,14 +800,20 @@ static void proc_read10_cmd(uint8_t rhport, mscd_interface_t* p_msc) {
+ 
+   // Application can consume smaller bytes
+   uint32_t const offset = p_msc->xferred_len % block_sz;
++  if (tud_msc_read_context_cb) {
++    tud_msc_read_context_cb(p_cbw->lun, p_cbw->command); // DSpico image mounter addition
++  }
+   nbytes = tud_msc_read10_cb(p_cbw->lun, lba, offset, _mscd_epbuf.buf, (uint32_t)nbytes);
+ 
+   if (nbytes < 0) {
+     // negative means error -> endpoint is stalled & status in CSW set to failed
+     TU_LOG_DRV("  tud_msc_read10_cb() return -1\r\n");
+ 
+-    // set sense
+-    set_sense_medium_not_present(p_cbw->lun);
++    // set sense (DSpico image mounter: keep the sense the app set, e.g. a
++    // read error, instead of always claiming the medium was removed)
++    if (p_msc->sense_key == 0) {
++      set_sense_medium_not_present(p_cbw->lun);
++    }
+ 
+     fail_scsi_op(rhport, p_msc, MSC_CSW_STATUS_FAILED);
+   } else if (nbytes == 0) {
+diff --git a/src/class/msc/msc_device.h b/src/class/msc/msc_device.h
+index 29acd280a..318a21150 100644
+--- a/src/class/msc/msc_device.h
++++ b/src/class/msc/msc_device.h
+@@ -149,6 +149,17 @@ TU_ATTR_WEAK void tud_msc_scsi_complete_cb(uint8_t lun, uint8_t const scsi_cmd[1
+ // Invoked to check if device is writable as part of SCSI WRITE10
+ TU_ATTR_WEAK bool tud_msc_is_writable_cb(uint8_t lun);
+ 
++// DSpico image mounter addition: return the block count if this data-in
++// command (e.g. READ(12) or READ CD) should be streamed through
++// tud_msc_read10_cb() like READ(10) (LBA in bytes 2-5), or 0 to handle it
++// in tud_msc_scsi_cb() as usual. Must not have side effects.
++TU_ATTR_WEAK uint32_t tud_msc_stream_read_blocks_cb(uint8_t lun, uint8_t const scsi_cmd[16], uint32_t total_bytes);
++
++// DSpico image mounter addition: called before each tud_msc_read10_cb() chunk
++// with the command being served (READ 10 or a streamed read), so the app can
++// tell READ(10) from READ CD etc.
++TU_ATTR_WEAK void tud_msc_read_context_cb(uint8_t lun, uint8_t const scsi_cmd[16]);
++
+ //--------------------------------------------------------------------+
+ // Internal Class Driver API
+ //--------------------------------------------------------------------+
