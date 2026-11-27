@@ -379,7 +379,7 @@ void tud_msc_inquiry_cb(uint8_t lun, uint8_t vendor_id[8], uint8_t product_id[16
 {
     (void) lun;
     const char vid[] = "DSpico";
-    const char* pid = sMediaType == MOUNT_MEDIA_CDROM ? "Virtual DVD-ROM" : "PicoDrive";
+    const char* pid = sMediaType == MOUNT_MEDIA_CDROM ? "Virtual DVD-ROM" : "DSPicoDrive";
     const char rev[] = "0.1";
     memcpy(vendor_id, vid, strlen(vid));
     memcpy(product_id, pid, strlen(pid));

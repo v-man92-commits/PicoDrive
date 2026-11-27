@@ -116,7 +116,7 @@ char const *string_desc_arr[] =
 {
     (const char[]) { 0x09, 0x04 },  // 0: is supported language is English (0x0409)
     "LNH",                      // 1: Manufacturer
-    "DSpico PicoDrive",        // 2: Product
+    "DSpico DSPicoDrive",        // 2: Product
     NULL,                           // 3: Serials will use unique ID if possible
     "DSpico Image"                 // 4: MSC Interface
 };

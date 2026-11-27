@@ -1146,10 +1146,10 @@ static void drawTop()
 #ifdef IMAGE_MOUNTER_EXFAT
     {
         const char* fs = sd_fsTypeName();
-        ui_line(UI_TOP, 0, UI_CYAN, " " APP_NAME " v" APP_VERSION "       SD:%-6s", fs ? fs : "?");
+        ui_line(UI_TOP, 0, UI_CYAN, " " APP_NAME " v" APP_VERSION "     SD:%-6s", fs ? fs : "?");
     }
 #else
-    ui_line(UI_TOP, 0, UI_CYAN, " " APP_NAME "                v" APP_VERSION);
+    ui_line(UI_TOP, 0, UI_CYAN, " " APP_NAME "              v" APP_VERSION);
 #endif
     ui_line(UI_TOP, 1, UI_GREY, "--------------------------------");
 

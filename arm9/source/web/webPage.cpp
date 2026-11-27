@@ -5,7 +5,7 @@
 const char gWebPage[] = R"HTML(<!doctype html>
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PicoDrive</title>
+<title>DSPicoDrive</title>
 <style>
 :root{color-scheme:dark}
 body{font-family:system-ui,sans-serif;margin:0;background:#101214;color:#e8e8e8}
@@ -27,7 +27,7 @@ input,select{font:inherit;padding:8px;border-radius:8px;border:1px solid #3a424a
 .img:first-child{border-top:0}
 #toast{position:fixed;left:12px;right:12px;bottom:12px;max-width:696px;margin:0 auto;padding:12px;border-radius:10px;background:#2a3038;display:none}
 </style></head><body>
-<header><h1>PicoDrive <small>v0.1</small></h1></header>
+<header><h1>DSPicoDrive <small>v0.1</small></h1></header>
 <main>
 <div id="login" class="card" style="display:none">
   <p>Enter the PIN shown on the DS top screen.</p>

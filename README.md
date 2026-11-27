@@ -21,7 +21,7 @@ control it from a phone over WiFi, even with the lid closed.
 - Can return to the loader menu.
 - Only offers image sizes the SD card's filesystem and free space can hold.
 
-Images go in `sd:/images/`. Output: `dspicodrive.nds` (DSi-enhanced; WPA2 needs
+Images go in `sd:/images/`. Output: `DSPicoDrive.nds` (DSi-enhanced; WPA2 needs
 DSi mode).
 
 ## Building

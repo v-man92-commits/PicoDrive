@@ -35,7 +35,7 @@ def req(method, path, cookie=None, timeout=10):
 
 # page loads without a session; API doesn't
 st, h, body = req("GET", "/")
-check(st == 200 and b"PicoDrive" in body and "Content-Security-Policy" in h, "page served")
+check(st == 200 and b"DSPicoDrive" in body and "Content-Security-Policy" in h, "page served")
 check(h.get("Cache-Control") == "no-store", "no caching")
 st, h, body = req("GET", "/api/status")
 check(st == 401 and json.loads(body).get("login") is True, "status needs login (%d)" % st)

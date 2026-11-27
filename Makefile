@@ -1,9 +1,9 @@
-# PicoDrive v0.1 (BlocksDS build): USB disk images + phone/web control.
+# DSPicoDrive v0.1 (BlocksDS build): USB disk images + phone/web control.
 BLOCKSDS	?= /opt/wonderful/thirdparty/blocksds/core
 export BLOCKSDS
 
-NAME		:= picodrive
-GAME_TITLE	:= PicoDrive v0.1
+NAME		:= DSPicoDrive
+GAME_TITLE	:= DSPicoDrive v0.1
 GAME_SUBTITLE	:= USB images + phone control
 GAME_AUTHOR	:= DSpico
 GAME_ICON	:= icon.bmp
@@ -21,13 +21,13 @@ ROM		:= $(NAME).nds
 all: $(ROM)
 
 # Submodules: tinyusb and libtwl (git submodule update --init).
-# TinyUSB gets PicoDrive's MSC changes (CD/DVD-ROM emulation); applied once.
+# TinyUSB gets DSPicoDrive's MSC changes (CD/DVD-ROM emulation); applied once.
 tinyusb:
 	$(V)if git -C libs/tinyusb apply --check $(CURDIR)/patches/tinyusb-msc-cdrom.patch 2>/dev/null; then \
 		echo "  PATCH tinyusb"; git -C libs/tinyusb apply $(CURDIR)/patches/tinyusb-msc-cdrom.patch; fi
 
 # libtwl gets a small diagnostics patch (which ARM7 IRQ/thread is running,
-# shown on PicoDrive's "Something is stuck" page); applied once.
+# shown on DSPicoDrive's "Something is stuck" page); applied once.
 libtwl:
 	$(V)if git -C libs/libtwl apply --check $(CURDIR)/patches/libtwl-irq-breadcrumb.patch 2>/dev/null; then \
 		echo "  PATCH libtwl"; git -C libs/libtwl apply $(CURDIR)/patches/libtwl-irq-breadcrumb.patch; fi
