@@ -1,7 +1,7 @@
-# PicoDriveDS v0.1
+# DSPicoDrive v0.1
 
 > [!WARNING]
-> **Beta software: use at your own risk.** PicoDriveDS is early, experimental
+> **Beta software: use at your own risk.** DSPicoDrive is early, experimental
 > homebrew. It writes to disk images and SD cards over USB, and bugs could
 > corrupt data or images. Keep backups of anything important, and don't use
 > it on the only copy of your data.
@@ -21,7 +21,7 @@ control it from a phone over WiFi, even with the lid closed.
 - Can return to the loader menu.
 - Only offers image sizes the SD card's filesystem and free space can hold.
 
-Images go in `sd:/images/`. Output: `picodriveds.nds` (DSi-enhanced; WPA2 needs
+Images go in `sd:/images/`. Output: `dspicodrive.nds` (DSi-enhanced; WPA2 needs
 DSi mode).
 
 ## Building
@@ -30,7 +30,7 @@ Needs [BlocksDS](https://blocksds.skylyrac.net/) (tested with 1.25.0 and the
 Wonderful toolchain).
 
     git clone --recursive <this repo>
-    cd PicoDriveDS
+    cd DSPicoDrive
     make
 
 `make` applies `patches/tinyusb-msc-cdrom.patch` to the TinyUSB submodule
